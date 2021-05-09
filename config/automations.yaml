@@ -1,0 +1,36 @@
+- id: '1620372260447'
+  alias: LED_ON after sun set
+  description: ''
+  trigger:
+  - platform: sun
+    event: sunset
+  condition: []
+  action:
+  - service: switch.turn_on
+    target:
+      entity_id: switch.green_led
+  mode: single
+- id: '1620372375845'
+  alias: LED_ON after 10:30
+  description: ''
+  trigger:
+  - platform: time
+    at: '10:30:00'
+  condition: []
+  action:
+  - service: switch.turn_on
+    target:
+      entity_id: switch.green_led
+  mode: single
+- id: '1620372408007'
+  alias: LED_OFF after 10:00
+  description: ''
+  trigger:
+  - platform: time
+    at: '10:00:00'
+  condition: []
+  action:
+  - service: switch.turn_off
+    target:
+      entity_id: switch.green_led
+  mode: single

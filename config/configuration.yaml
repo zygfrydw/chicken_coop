@@ -1,0 +1,33 @@
+
+# Configure a default setup of Home Assistant (frontend, api, etc)
+default_config:
+
+# Text to speech
+tts:
+  - platform: google_translate
+
+group: !include groups.yaml
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+binary_sensor:
+  - platform: rpi_gpio
+    ports:
+      3: button_up
+      4: button_down
+    pull_mode: UP
+
+cover:
+  - platform: winch_cover
+    covers:
+      - name: chicken_gate
+        dir_pin: 24
+        pwm_pin: 23
+        fault_pin: 25
+        red_led_pin: 9
+        green_led_pin: 10
+        encoder_led_pin: 7
+        encoder_detector_pin: 8
+        pos_upper_pin: 5
+        pos_bottom_pin: 6
