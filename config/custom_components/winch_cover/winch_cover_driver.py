@@ -3,21 +3,21 @@ from . import setup_input, setup_output, read_input, write_output, edge_detect, 
 import logging
 from enum import Enum
 from threading import Condition
-
+import asyncio
 _LOGGER = logging.getLogger(__package__)
 
 
 class PositionSensor:
     sensor_pin: int
     pull_mode: PullMode
-    on_position_reached: Optional[Callable[[], None]]
+    on_position_reached: Optional[Callable[[bool], None]]
 
     def __init__(self, sensor_pin: int, pull_mode: PullMode):
         self.sensor_pin = sensor_pin
         self.pull_mode = pull_mode
         self.on_position_reached = None
         setup_input(self.sensor_pin, self.pull_mode)
-        edge_detect(self.sensor_pin, self.event_callback, 50, EdgeType.FALLING)
+        edge_detect(self.sensor_pin, self.event_callback, 50, EdgeType.BOTH)
 
     def set_on_position_reached(self, callback: Callable[[], None]):
         self.on_position_reached = callback
@@ -26,8 +26,11 @@ class PositionSensor:
         if port != self.sensor_pin:
             return
 
-        if self.on_position_reached is not None and read_input(self.sensor_pin) == 0:
-            self.on_position_reached()
+        state = read_input(self.sensor_pin)
+
+        _LOGGER.warning(f'GPIO INPUT | Port: {port}; state: {state}')
+        if self.on_position_reached is not None:
+            self.on_position_reached(state)
 
     def get_state(self) -> bool:
         return read_input(self.sensor_pin)
@@ -62,11 +65,11 @@ class Motor:
 
     def run_forward(self):
         write_output(self.dir_pin_number, 1)
-        write_output(self.pwm_pin_number, 1)
+        # write_output(self.pwm_pin_number, 1)
 
     def run_backward(self):
         write_output(self.dir_pin_number, 0)
-        write_output(self.pwm_pin_number, 1)
+        # write_output(self.pwm_pin_number, 1)
 
     def stop(self):
         write_output(self.pwm_pin_number, 0)
@@ -104,6 +107,7 @@ class WinchCoverDriver:
     _motor: Motor
     _is_working: bool
     _state: WinchState
+    _target_state: WinchState
     _on_state_changed: Optional[Callable[[], None]]
 
     def __init__(self,
@@ -133,17 +137,18 @@ class WinchCoverDriver:
             self._state = WinchState.CLOSED
         else:
             self._state = WinchState.CLOSING
-        self.cond = Condition()
+        self._target_state = WinchState.OPENED
+        self.cond = asyncio.Condition()
 
-    def open_cover(self):
-        _LOGGER.warning("Open cover!")
-        with self.cond:
+    async def open_cover(self):
+        _LOGGER.warning("Open cover driver!")
+        async with self.cond:
             self._is_working = True
             self.state = WinchState.OPENING
             self._green_led.turn_on()
             self._motor.run_forward()
             _LOGGER.warning("Entering wait")
-            wait_res = self.cond.wait(timeout=self._opening_timeout)
+            wait_res = await asyncio.wait_for(self.cond.wait(), self._opening_timeout)
             self._motor.stop()
             self._green_led.turn_off()
             self._is_working = False
@@ -153,15 +158,15 @@ class WinchCoverDriver:
                 _LOGGER.error("Cover was not opened within given time limit!")
                 self.on_error()
 
-    def close_cover(self):
-        _LOGGER.warning("Close cover!")
+    async def close_cover(self):
+        _LOGGER.warning("Close cover driver!")
         # async with self.cond:
-        with self.cond:
+        async with self.cond:
             self._is_working = True
             self.state = WinchState.CLOSING
             self._motor.run_backward()
             _LOGGER.warning("Entering wait")
-            wait_res = self.cond.wait(timeout=self._closing_timeout)
+            wait_res = await asyncio.wait_for(self.cond.wait(), self._closing_timeout)
             self._motor.stop()
             self._green_led.turn_off()
             self._is_working = False
@@ -174,27 +179,29 @@ class WinchCoverDriver:
     def stop(self):
         self.cond.notify_all()
 
-    def bottom_position_reached(self):
-        with self.cond:
-            self.state = WinchState.CLOSED
-            self.cond.notify_all()
+    def bottom_position_reached(self, state: bool):
+        if state == 0:
+            with self.cond:
+                self.state = WinchState.CLOSED
+                self.cond.notify_all()
 
-    def upper_position_reached(self):
-        with self.cond:
-            self.state = WinchState.OPENED
-            self.cond.notify_all()
+    def upper_position_reached(self, state: bool):
+        if state == 0:
+            with self.cond:
+                self.state = WinchState.OPENED
+                self.cond.notify_all()
 
     def on_error(self):
         self._red_led.turn_on()
 
     @property
     def state(self):
-        with self.cond:
-            return self._state
+        # asyncio with self.cond:
+        return self._state
 
     @state.setter
     def state(self, value):
-        #TODO: should I add sychronization here?
+        # TODO: should I add sychronization here?
         if self._state != value:
             self._state = value
             if self._on_state_changed is not None:

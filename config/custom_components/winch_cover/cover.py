@@ -146,7 +146,8 @@ class WinchCover(CoverEntity):
         if self.is_opening or self.is_closing:
             raise GateBusy("Gate is busy!")
         if not self.is_closed:
-            await self.hass.async_add_executor_job(self._driver.close_cover)
+            # await self.hass.async_add_executor_job(self._driver.close_cover)
+            await self._driver.close_cover()
 
     async def async_stop_cover(self, **kwargs):
         _LOGGER.warning("Stopping cover")
@@ -158,4 +159,6 @@ class WinchCover(CoverEntity):
         if self.is_opening or self.is_closing:
             raise GateBusy("Gate is busy!")
         if self.is_closed:
-            await self.hass.async_add_executor_job(self._driver.open_cover)
+            # await self.hass.async_add_executor_job(self._driver.open_cover)
+            await self._driver.open_cover()
+
